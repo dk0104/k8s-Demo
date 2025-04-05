@@ -1,7 +1,3 @@
-############################
-# Variables
-############################
-
 variable "yc_token" {
   type = string
   description = "Yandex Cloud API key"
