@@ -2,3 +2,6 @@ Setup/terraform/.terraform.lock.hcl
 Setup/terraform/.terraform.lock.hcl
 Setup/terraform/.terraform/providers/registry.terraform.io/yandex-cloud/yandex
 Setup/terraform/.terraform.lock.hcl
+Setup/terraform/terraform.tfstate
+Setup/terraform/terraform.tfstate.backup
+Setup/terraform/key.json
