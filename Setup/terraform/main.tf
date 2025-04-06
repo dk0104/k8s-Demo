@@ -1,29 +1,25 @@
 # Compute instance group for masters
 resource "yandex_compute_instance_group" "k8s-masters" {
   name               = "k8s-masters"
-  service_account_id = yandex_iam_service_account.admin.id
+  service_account_id = yandex_iam_service_account.denk-sa.id
   depends_on = [
-    yandex_iam_service_account.admin,
+    yandex_iam_service_account.denk-sa,
     yandex_resourcemanager_folder_iam_binding.editor,
     yandex_vpc_network.k8s-network,
     yandex_vpc_subnet.k8s-subnet-1,
     yandex_vpc_subnet.k8s-subnet-2,
     yandex_vpc_subnet.k8s-subnet-3,
   ]
-  
+
   instance_template {
 
-  # Имя виртуальных машин, создаваемых Instance Groups
-  name = "master-{instance.index}"
+    name = "master-{instance.index}"
+    resources {
+      cores         = 2
+      memory        = 2
+      core_fraction = 20
+    }
 
-  # Ресурсы, которые будут выделены для создания виртуальных машин в Instance Groups
-  resources {
-    cores  = 2
-    memory = 2
-    core_fraction = 20 # Базовый уровень производительности vCPU. https://cloud.yandex.ru/docs/compute/concepts/performance-levels
-  }
-
-    # Загрузочный диск в виртуальных машинах в Instance Groups
     boot_disk {
       initialize_params {
         image_id = "fd8vmcue7aajpmeo39kk" # Ubuntu 20.04 LTS
@@ -39,12 +35,10 @@ resource "yandex_compute_instance_group" "k8s-masters" {
         yandex_vpc_subnet.k8s-subnet-2.id,
         yandex_vpc_subnet.k8s-subnet-3.id,
       ]
-      # Флаг nat true указывает что виртуалкам будет предоставлен публичный IP адрес.
       nat = true
     }
 
     metadata = {
-      ssh-keys = "ubuntu:${file("~/.ssh/id_rsa.pub")}"
       user-data = "${file("./meta.txt")}"
     }
     network_settings {
@@ -62,7 +56,7 @@ resource "yandex_compute_instance_group" "k8s-masters" {
     zones = [
       "ru-central1-a",
       "ru-central1-b",
-      "ru-central1-c",
+      "ru-central1-d",
     ]
   }
 
@@ -74,27 +68,23 @@ resource "yandex_compute_instance_group" "k8s-masters" {
   }
 }
 
-# Compute instance group for workers
-
-resource "yandex_compute_instance_group" "k8s-workers" {
-  name               = "k8s-workers"
-  service_account_id = yandex_iam_service_account.admin.id
+# Compute instance group for frontend
+resource "yandex_compute_instance_group" "k8s-frontend" {
+  name               = "k8s-frontend"
+  service_account_id = yandex_iam_service_account.denk-sa.id
   depends_on = [
-    yandex_iam_service_account.admin,
+    yandex_iam_service_account.denk-sa,
     yandex_resourcemanager_folder_iam_binding.editor,
     yandex_vpc_network.k8s-network,
     yandex_vpc_subnet.k8s-subnet-1,
-    yandex_vpc_subnet.k8s-subnet-2,
-    yandex_vpc_subnet.k8s-subnet-3,
   ]
 
   instance_template {
-
-    name = "worker-{instance.index}"
+    name = "frontend-{instance.index}"
 
     resources {
-      cores  = 2
-      memory = 2
+      cores         = 2
+      memory        = 2
       core_fraction = 20
     }
 
@@ -113,12 +103,83 @@ resource "yandex_compute_instance_group" "k8s-workers" {
         yandex_vpc_subnet.k8s-subnet-2.id,
         yandex_vpc_subnet.k8s-subnet-3.id,
       ]
-      # Флаг nat true указывает что виртуалкам будет предоставлен публичный IP адрес.
       nat = true
     }
 
     metadata = {
-      ssh-keys = "ubuntu:${file("~/.ssh/id_rsa.pub")}"
+      user-data = "${file("./meta.txt")}"
+    }
+
+    network_settings {
+      type = "STANDARD"
+    }
+  }
+
+  scale_policy {
+    fixed_scale {
+      size = 1
+    }
+  }
+
+  allocation_policy {
+    zones = [
+      "ru-central1-a",
+      "ru-central1-b",
+      "ru-central1-d",
+    ]
+  }
+
+  deploy_policy {
+    max_unavailable = 1
+    max_creating    = 1
+    max_expansion   = 1
+    max_deleting    = 1
+  }
+}
+
+# Compute instance group for workers
+resource "yandex_compute_instance_group" "k8s-workers" {
+  name               = "k8s-workers"
+  service_account_id = yandex_iam_service_account.denk-sa.id
+  depends_on = [
+    yandex_iam_service_account.denk-sa,
+    yandex_resourcemanager_folder_iam_binding.editor,
+    yandex_vpc_network.k8s-network,
+    yandex_vpc_subnet.k8s-subnet-1,
+    yandex_vpc_subnet.k8s-subnet-2,
+    yandex_vpc_subnet.k8s-subnet-3,
+  ]
+
+  instance_template {
+
+    name = "worker-{instance.index}"
+
+    resources {
+      cores         = 2
+      memory        = 2
+      core_fraction = 20
+    }
+
+    boot_disk {
+      initialize_params {
+        image_id = "fd8vmcue7aajpmeo39kk" # Ubuntu 20.04 LTS
+        size     = 10
+        type     = "network-hdd"
+      }
+    }
+
+    network_interface {
+      network_id = yandex_vpc_network.k8s-network.id
+      subnet_ids = [
+        yandex_vpc_subnet.k8s-subnet-1.id,
+        yandex_vpc_subnet.k8s-subnet-2.id,
+        yandex_vpc_subnet.k8s-subnet-3.id,
+      ]
+      nat = true
+    }
+
+    metadata = {
+      user-data = "${file("./meta.txt")}"
     }
     network_settings {
       type = "STANDARD"
@@ -127,7 +188,7 @@ resource "yandex_compute_instance_group" "k8s-workers" {
 
   scale_policy {
     fixed_scale {
-      size = 2
+      size = 3
     }
   }
 
@@ -135,7 +196,7 @@ resource "yandex_compute_instance_group" "k8s-workers" {
     zones = [
       "ru-central1-a",
       "ru-central1-b",
-      "ru-central1-c",
+      "ru-central1-d",
     ]
   }
 
@@ -148,12 +209,11 @@ resource "yandex_compute_instance_group" "k8s-workers" {
 }
 
 # Compute instance group for ingresses
-
 resource "yandex_compute_instance_group" "k8s-ingresses" {
   name               = "k8s-ingresses"
-  service_account_id = yandex_iam_service_account.admin.id
+  service_account_id = yandex_iam_service_account.denk-sa.id
   depends_on = [
-    yandex_iam_service_account.admin,
+    yandex_iam_service_account.denk-sa,
     yandex_resourcemanager_folder_iam_binding.editor,
     yandex_vpc_network.k8s-network,
     yandex_vpc_subnet.k8s-subnet-1,
@@ -170,8 +230,8 @@ resource "yandex_compute_instance_group" "k8s-ingresses" {
     name = "ingress-{instance.index}"
 
     resources {
-      cores  = 2
-      memory = 2
+      cores         = 2
+      memory        = 2
       core_fraction = 20
     }
 
@@ -195,7 +255,7 @@ resource "yandex_compute_instance_group" "k8s-ingresses" {
     }
 
     metadata = {
-      ssh-keys = "ubuntu:${file("~/.ssh/id_rsa.pub")}"
+      user-data = "${file("./meta.txt")}"
     }
     network_settings {
       type = "STANDARD"
@@ -204,7 +264,7 @@ resource "yandex_compute_instance_group" "k8s-ingresses" {
 
   scale_policy {
     fixed_scale {
-      size = 2
+      size = 1
     }
   }
 
@@ -212,7 +272,7 @@ resource "yandex_compute_instance_group" "k8s-ingresses" {
     zones = [
       "ru-central1-a",
       "ru-central1-b",
-      "ru-central1-c",
+      "ru-central1-d",
     ]
   }
 
@@ -225,7 +285,6 @@ resource "yandex_compute_instance_group" "k8s-ingresses" {
 }
 
 # Load balancer for ingresses
-
 resource "yandex_lb_network_load_balancer" "k8s-load-balancer" {
   name = "k8s-load-balancer"
   depends_on = [
@@ -252,62 +311,51 @@ resource "yandex_lb_network_load_balancer" "k8s-load-balancer" {
   }
 }
 
-# Backet for storing cluster backups
-
-resource "yandex_storage_bucket" "backup-backet-apatsev" {
-  bucket = "backup-backet-apatsev"
-  force_destroy = true
-  access_key = yandex_iam_service_account_static_access_key.static-access-key.access_key
-  secret_key = yandex_iam_service_account_static_access_key.static-access-key.secret_key
-  depends_on = [
-    yandex_iam_service_account_static_access_key.static-access-key
-  ]
-}
 
 # Output values
 
 output "instance_group_masters_public_ips" {
   description = "Public IP addresses for master-nodes"
-  value = yandex_compute_instance_group.k8s-masters.instances.*.network_interface.0.nat_ip_address
+  value       = yandex_compute_instance_group.k8s-masters.instances.*.network_interface.0.nat_ip_address
 }
 
 output "instance_group_masters_private_ips" {
   description = "Private IP addresses for master-nodes"
-  value = yandex_compute_instance_group.k8s-masters.instances.*.network_interface.0.ip_address
+  value       = yandex_compute_instance_group.k8s-masters.instances.*.network_interface.0.ip_address
 }
 
 output "instance_group_workers_public_ips" {
   description = "Public IP addresses for worder-nodes"
-  value = yandex_compute_instance_group.k8s-workers.instances.*.network_interface.0.nat_ip_address
+  value       = yandex_compute_instance_group.k8s-workers.instances.*.network_interface.0.nat_ip_address
 }
 
 output "instance_group_workers_private_ips" {
   description = "Private IP addresses for worker-nodes"
-  value = yandex_compute_instance_group.k8s-workers.instances.*.network_interface.0.ip_address
+  value       = yandex_compute_instance_group.k8s-workers.instances.*.network_interface.0.ip_address
 }
 
 output "instance_group_ingresses_public_ips" {
   description = "Public IP addresses for ingress-nodes"
-  value = yandex_compute_instance_group.k8s-ingresses.instances.*.network_interface.0.nat_ip_address
+  value       = yandex_compute_instance_group.k8s-ingresses.instances.*.network_interface.0.nat_ip_address
 }
 
 output "instance_group_ingresses_private_ips" {
   description = "Private IP addresses for ingress-nodes"
-  value = yandex_compute_instance_group.k8s-ingresses.instances.*.network_interface.0.ip_address
+  value       = yandex_compute_instance_group.k8s-ingresses.instances.*.network_interface.0.ip_address
 }
 
 output "load_balancer_public_ip" {
   description = "Public IP address of load balancer"
-  value = yandex_lb_network_load_balancer.k8s-load-balancer.listener.*.external_address_spec[0].*.address
+  value       = yandex_lb_network_load_balancer.k8s-load-balancer.listener.*.external_address_spec[0].*.address
 }
 
 output "static-key-access-key" {
   description = "Access key for admin user"
-  value = yandex_iam_service_account_static_access_key.static-access-key.access_key
+  value       = yandex_iam_service_account_static_access_key.static-access-key.access_key
 }
 
 output "static-key-secret-key" {
   description = "Secret key for admin user"
-  value = yandex_iam_service_account_static_access_key.static-access-key.secret_key
-  sensitive = true
+  value       = yandex_iam_service_account_static_access_key.static-access-key.secret_key
+  sensitive   = true
 }
